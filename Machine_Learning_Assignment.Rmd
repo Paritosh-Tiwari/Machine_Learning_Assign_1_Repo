@@ -1,0 +1,136 @@
+Prediction of Exercise Quality
+========================================================
+
+## Synopsis
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+The goal of this project is to predict the manner in which people perform certain exercises. The data for this project come from this source: 
+http://groupware.les.inf.puc-rio.br/har.
+
+This data was collected from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+
+## Data Processing
+
+#### Loading the required R Packages
+
+```{r setoptions,echo=TRUE }
+opts_chunk$set(echo=TRUE, results = "asis",cache=TRUE)
+```
+
+```{r}
+library(caret)
+library(xtable)
+```
+
+#### Reading the data file in R
+
+```{r}
+train = read.csv("pml-training.csv",header=TRUE)
+```
+
+#### Training Set and Cross Validation Data
+
+The above data was further divided into a training set and Cross Validation set. 75% of the data was used as training set and 25% for test set.Partition was performed on the variable 'Classe'. This is the dependent variable in this analysis and needs to be predicted based on other variables.
+
+```{r}
+partition = createDataPartition(y=train$classe,p=0.75,list=FALSE)
+train_set = train[partition,]
+cv_set = train[-partition,]
+dim(train_set)
+dim(cv_set)
+```
+
+#### Reducing the number of predictors
+
+Printed out the column named for better understanding the content of the data
+
+```{r}
+names(train_set)
+```
+
+Based on the column names and further understanding of the data from reading about the experiment, noted that the first 7 variable are classifier variable for people/time. These do not represent any form of measurement and hence cannot be used to predict the outcome. Updated the training data set by removing these variables. 
+
+
+```{r}
+train_set_2 = train_set[,c(8:160)]
+```
+
+Next removed the variables which have near zero variability across the data as these variables cannot account for change in outcome. The nearZeroVar function generates an array of TRUE/FALSE.Used this array to update the train data set.
+
+
+```{r}
+nsv_2 = nearZeroVar(train_set_2,saveMetrics=FALSE)
+train_set_3 = train_set_2[,-nsv_2]
+```
+
+Next removed the variables with missing values.Such variables can do more harm than good in the prediction function. The reason could be that value for a particular case is missing or skewed for a certain outcome. In such scenario, including these predictors can result in wrong prediction models.
+
+
+```{r}
+Missing_Val = apply(train_set_3,2,function(x) 
+              {sum(is.na(x))})
+
+train_set_4 = train_set_3[,which(Missing_Val == 0)]
+dim(train_set_4)
+```
+
+Now 52 predictors and the variable to be predicted are left. Since there is neither a documentation of how these variables affect the outcome nor I have the technical expertise in this domain, I decided to go ahead with using all these predictors in the model. Singular Value Decomposition was considered but refrained from it as it would make the result less interpretable.
+
+A random forest method with cross validation method was used for prediction model. Since this model already checks for cross validation, a separate cross validation was not applied.
+
+```{r}
+fit_model_1 = train(classe ~.,data = train_set_4,method="rf",trControl = trainControl(method = "cv", number = 10,allowParallel=TRUE))
+```
+
+The following results were obtained. 
+
+```{r}
+print_data = xtable(fit_model_1$results,digits=4)
+print(print_data,digits=4, type = "html")
+```
+
+
+This appeared to be a highly accurate model with about 99.3% accuracy on the training set. Thus the 'In sample error' is 0.7%.  
+
+Now an estimate of out sample error is required. For this, the cross validation data set was used. Before using the cv data, similar transformations were applied on that data. Basically, only the predictors selected for training were included.
+
+
+```{r}
+c_names = names(train_set_4)
+cv_set_2 = cv_set[,c_names]
+cv_pred = predict(fit_model_1,cv_set_2)
+```
+
+A confusion matrix was used to estimate the out sample error.
+
+
+```{r}
+cf = confusionMatrix(cv_pred,cv_set_2$classe)
+print_data = xtable(cf$table,digits=4)
+print(print_data,type = "html",digits=4)
+print_data = xtable(cf$byClass)
+print(print_data,type = "html")
+cf$overall
+```
+
+
+Noted the even the accuracy of model on cross validation data set (99.4%) was even better that on the training set. Hence the estimated 'Out Sample error' is 0.6%
+
+Also applied the same model to test data for obtaining the predictions.
+
+```{r}
+test = read.csv("pml-testing.csv",header=TRUE)
+t_names = c_names[-53]
+test_2 = test[,t_names]
+test_pred = predict(fit_model_1,test_2)
+```
+
+The result obtained were as below.
+
+```{r}
+test_pred
+```
+
+## End of File
